@@ -23,6 +23,10 @@ To configure `web-distributor`, edit `/etc/web-distributor/config.toml`. Recogni
 - `home`: Path for the webserver configuration files. Defaults to `/etc/web-distributor`.
 - `acme_redirect_configs`: Path for `acme-redirect` configuration files. Defaults to `/etc/acme-redirect.d`.
 - `[routes]`: A list of your desired reverse proxies, separated by a linebreak. "example.com" = "127.0.0.1" would be a correct syntax.
+- `[grpc_prefix]`: Defines, per domain, a URL path prefix that is served as native gRPC.
+  Requests under the prefix are passed to the same target with `grpc_pass` (HTTP/2 to the
+  upstream); every other request on that domain is proxied as before. Set it when adding the
+  route: `web-distributor add --grpc-prefix /inventory.v1. inventory.example.com 10.0.0.1:8080`.
 - `[login_groups]`: Defines which domain belongs to which login group. For each login group there will be a `.htaccess` file generated.
   Using the `web-distributor login-group` subcommand, logins (name, password pairs) can be added to login groups.
 
