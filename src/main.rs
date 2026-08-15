@@ -26,6 +26,11 @@ enum Commands {
 
         #[arg(short, long)]
         force: bool,
+
+        // URL path prefix to serve as native gRPC, e.g. "/inventory.v1.".
+        // Omitting it drops any prefix previously stored for the domain.
+        #[arg(short, long)]
+        grpc_prefix: Option<String>,
     },
     Remove {
         domain: String,
@@ -101,6 +106,12 @@ struct Config {
     // that outpost. Mutually exclusive in practice with a login_group.
     #[serde(default)]
     forward_auth: HashMap<String, String>,
+    // domain -> URL path prefix served as native gRPC, e.g. "/inventory.v1.".
+    // Requests under the prefix get their own location with grpc_pass (HTTP/2
+    // to the upstream); everything else on the domain keeps the plain
+    // proxy_pass location.
+    #[serde(default)]
+    grpc_prefix: HashMap<String, String>,
 }
 
 fn read_config(config_path: &Path) -> Config {
@@ -114,6 +125,7 @@ fn read_config(config_path: &Path) -> Config {
                     routes: HashMap::new(),
                     login_groups: HashMap::new(),
                     forward_auth: HashMap::new(),
+                    grpc_prefix: HashMap::new(),
                 };
                 write_config(&config, &config_path);
                 config
@@ -130,6 +142,7 @@ fn nginx_proxy_build(
     to: &str,
     login_group_path: Option<String>,
     forward_auth_outpost: Option<String>,
+    grpc_prefix: Option<String>,
 ) -> String {
     let login_group = match login_group_path {
         Some(lg) => format!(
@@ -148,6 +161,11 @@ fn nginx_proxy_build(
         None => (String::new(), String::new()),
     };
 
+    let grpc_location = match grpc_prefix {
+        Some(prefix) => format!(include_str!("nginx-grpc.conf"), prefix = prefix, to = to),
+        None => String::new(),
+    };
+
     format!(
         include_str!("nginx.conf"),
         from = from,
@@ -155,6 +173,7 @@ fn nginx_proxy_build(
         login_group = login_group,
         auth_request = auth_request,
         auth_outpost = auth_outpost,
+        grpc_location = grpc_location,
     )
 }
 
@@ -195,9 +214,10 @@ fn generate_webserver_configs(config: &Config, timestring: &str) {
             None
         };
         let forward_auth = config.forward_auth.get(source).cloned();
+        let grpc_prefix = config.grpc_prefix.get(source).cloned();
         fs::write(
             nginx_folder.join(format!("{}.nginx", source)),
-            nginx_proxy_build(&source, &target, access_str, forward_auth),
+            nginx_proxy_build(&source, &target, access_str, forward_auth, grpc_prefix),
         )
         .unwrap();
     }
@@ -285,6 +305,7 @@ fn main() {
             domain,
             target,
             force,
+            grpc_prefix,
         } => {
             if config.routes.contains_key(domain) && !force {
                 eprintln!(
@@ -299,6 +320,12 @@ fn main() {
             }
 
             config.routes.insert(domain.to_string(), target.to_string());
+            match grpc_prefix {
+                Some(prefix) => config
+                    .grpc_prefix
+                    .insert(domain.to_string(), prefix.to_string()),
+                None => config.grpc_prefix.remove(domain),
+            };
             write_config(&config, &config_path);
         }
         Commands::Remove { domain } => {
@@ -307,6 +334,7 @@ fn main() {
                 exit(1);
             }
             config.routes.remove(domain);
+            config.grpc_prefix.remove(domain);
             write_config(&config, &config_path);
         }
         Commands::Generate {} => {}
