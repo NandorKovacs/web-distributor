@@ -7,7 +7,7 @@ use std::net::Ipv6Addr;
 use std::path::{Path, PathBuf};
 
 fn default_home() -> PathBuf {
-    PathBuf::from("/etc/web-distributor")
+    PathBuf::from("/etc/web-distributor/v2")
 }
 
 #[derive(Deserialize, Serialize)]

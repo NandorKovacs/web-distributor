@@ -7,7 +7,7 @@
 	auto_https disable_redirects disable_certs
 }
 
-import /etc/web-distributor/Caddyfile
+import /etc/web-distributor/v2/Caddyfile
 
 http:// {
 	@challenge path /.well-known/acme-challenge/*
