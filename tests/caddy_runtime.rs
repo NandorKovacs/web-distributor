@@ -119,9 +119,10 @@ certificate_only = ["cert.example.test"]
     }}
 }}
 import routes.caddy
-http://127.0.0.1:{backend} {{
+http://:{backend} {{
     @allow {{
-        path /outpost.goauthentik.io/auth/*
+        path /outpost.goauthentik.io/auth/caddy
+        method GET
         header Cookie session=ok
     }}
     handle @allow {{
@@ -129,15 +130,16 @@ http://127.0.0.1:{backend} {{
         header Set-Cookie refresh=yes
         respond "" 200
     }}
-    handle /outpost.goauthentik.io/auth/* {{
+    handle /outpost.goauthentik.io/auth/caddy {{
         header Set-Cookie login=yes
-        respond "" 401
+        header Location /outpost.goauthentik.io/start?rd=/private
+        respond "" 302
     }}
     handle /outpost.goauthentik.io/start {{
         respond "outpost-login"
     }}
     handle {{
-        respond "{{http.request.proto}}|{{http.request.uri}}|{{http.request.header.X-Authentik-Username}}|{{http.request.header.X-Forwarded-Proto}}"
+        respond "{{http.request.proto}}|{{http.request.uri}}|{{http.request.header.X-Authentik-Username}}|{{http.request.header.X-Forwarded-Proto}}|{{http.request.method}}"
     }}
 }}
 "#)).unwrap();
@@ -208,9 +210,14 @@ http://127.0.0.1:{backend} {{
             "Cookie: session=ok",
             "-H",
             "X-Authentik-Username: forged",
+            "--data",
+            "payload",
         ],
     );
-    assert!(ok.contains("/private|verified|https"), "{ok}");
+    assert!(
+        ok.contains("/private|verified|https|POST") && ok.contains("refresh=yes"),
+        "{ok}"
+    );
     assert!(get(sso, "/outpost.goauthentik.io/start", &[]).contains("outpost-login"));
     assert!(get("cert.example.test", "/", &[]).contains(" 404"));
 }
