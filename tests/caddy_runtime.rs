@@ -184,7 +184,7 @@ http://:{backend} {{
     let get = |host, path, args: &[&str]| request("https", host, https, path, args).unwrap();
     let redirect = request("http", host, http, "/a?q=1", &[]).unwrap();
     assert!(
-        redirect.contains(&format!("https://{host}:{https}/a?q=1")),
+        redirect.contains(&format!("https://{host}/a?q=1")),
         "{redirect}"
     );
     let plain = get(host, "/a%20b?q=1", &[]);
