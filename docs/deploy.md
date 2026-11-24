@@ -43,8 +43,9 @@ ssh -t cobalt "cd '$upload' && exec bash"
 
 Each release directory is immutable. The full Git commit distinguishes
 builds with the same Cargo version. If an ID already exists, compare its
-installed checksum to the manifest. To install a distinct rebuild of the
-same commit, set `release=$commit-2` (or the next unused suffix) in the build
+installed checksum to the manifest. For a distinct rebuild, or to retry a deploy
+that stopped after creating the release or staging directories, repeat the
+procedure with `release=$commit-2` (or the next unused suffix) in the build
 example. Keep the manifests with the release record. Repository credentials
 stay on the workstation.
 
@@ -59,9 +60,9 @@ set -e
 sha256sum -c cli.sha256 helper.sha256
 release=$(cat RELEASE)
 guest=web-distributor
-incoming=$(incus exec "$guest" -- mktemp -d /root/web-distributor.XXXXXXXX)
-incus file push web-distributor cli.sha256 "$guest$incoming/"
-incus exec "$guest" --env "release=$release" --env "incoming=$incoming" -- bash
+incoming=$(incus --force-local --project default exec "$guest" -- mktemp -d /root/web-distributor.XXXXXXXX)
+incus --force-local --project default file push web-distributor cli.sha256 "$guest$incoming/"
+incus --force-local --project default exec "$guest" --env "release=$release" --env "incoming=$incoming" -- bash
 ```
 
 ## Validate and activate in the guest
@@ -148,7 +149,7 @@ status. A reload error or failed acceptance check calls for rollback.
 
 Run as root in the guest. Set `release` to the ID of the update being
 undone if using a fresh shell. From the upload directory on cobalt,
-`incus exec web-distributor --env "release=$(cat RELEASE)" -- bash`
+`incus --force-local --project default exec web-distributor --env "release=$(cat RELEASE)" -- bash`
 opens one with the release ID set. These commands restore the saved target
 and exact prior fragment, including its ownership and mode, even after a
 partial activation. Roll back during the same change window so the saved
