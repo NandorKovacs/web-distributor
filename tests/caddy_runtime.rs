@@ -1,7 +1,7 @@
 //! Run with CADDY=/path/to/caddy cargo test --test caddy_runtime -- --ignored
 //! Requires curl with HTTP/2 support. All listeners and PKI are local to the test.
 use std::fs;
-use std::io;
+use std::io::{self, BufRead, BufReader, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -47,7 +47,7 @@ fn request(scheme: &str, host: &str, port: u16, path: &str, extra: &[&str]) -> i
             String::from_utf8_lossy(&out.stderr).into_owned(),
         ));
     }
-    Ok(String::from_utf8(out.stdout).unwrap())
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 fn generate(config: &Path, routes: &Path) {
@@ -82,6 +82,8 @@ fn generated_routes_serve_real_requests() {
         format!("tester:{}\n", bcrypt::hash("test-password", 4).unwrap()),
     )
     .unwrap();
+    let ws_listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let ws_port = ws_listener.local_addr().unwrap().port();
     let [http, https, backend] = ports();
     let config = tmp.0.join("config.toml");
     fs::write(
@@ -95,6 +97,7 @@ certificate_only = ["cert.example.test"]
 "app.example.test" = "127.0.0.1:{backend}"
 "staff.example.test" = "127.0.0.1:{backend}"
 "sso.example.test" = "127.0.0.1:{backend}"
+"ws.example.test" = "127.0.0.1:{ws_port}"
 [login_groups]
 "staff.example.test" = "staff"
 [forward_auth]
@@ -220,4 +223,31 @@ http://:{backend} {{
     );
     assert!(get(sso, "/outpost.goauthentik.io/start", &[]).contains("outpost-login"));
     assert!(get("cert.example.test", "/", &[]).contains(" 404"));
+    // Fixed RFC 6455 example handshake followed by a text frame.
+    let ws_server = thread::spawn(move || {
+        let (mut stream, _) = ws_listener.accept().unwrap();
+        for line in BufReader::new(&stream).lines() {
+            if line.unwrap().is_empty() {
+                break;
+            }
+        }
+        stream.write_all(b"HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n\x81\x05hello").unwrap();
+    });
+    let ws = get(
+        "ws.example.test",
+        "/socket",
+        &[
+            "--http1.1",
+            "-H",
+            "Connection: Upgrade",
+            "-H",
+            "Upgrade: websocket",
+            "-H",
+            "Sec-WebSocket-Version: 13",
+            "-H",
+            "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==",
+        ],
+    );
+    assert!(ws.contains(" 101") && ws.ends_with("hello"), "{ws}");
+    ws_server.join().unwrap();
 }
