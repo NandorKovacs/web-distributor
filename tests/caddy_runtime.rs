@@ -22,8 +22,8 @@ impl Drop for Server {
     }
 }
 
-fn ports() -> [u16; 3] {
-    let sockets = [(); 3].map(|_| TcpListener::bind(("127.0.0.1", 0)).unwrap());
+fn ports() -> [u16; 4] {
+    let sockets = [(); 4].map(|_| TcpListener::bind(("127.0.0.1", 0)).unwrap());
     sockets.map(|s| s.local_addr().unwrap().port())
 }
 
@@ -86,7 +86,7 @@ fn generated_routes_serve_real_requests() {
     let ws_port = ws_listener.local_addr().unwrap().port();
     let grpc_listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let grpc_port = grpc_listener.local_addr().unwrap().port();
-    let [http, https, backend] = ports();
+    let [http, https, backend, outpost] = ports();
     let config = tmp.0.join("config.toml");
     fs::write(
         &config,
@@ -103,7 +103,7 @@ certificate_only = ["cert.example.test"]
 [login_groups]
 "staff.example.test" = "staff"
 [forward_auth]
-"sso.example.test" = "127.0.0.1:{backend}"
+"sso.example.test" = "127.0.0.1:{outpost}"
 [grpc_prefix]
 "app.example.test" = "/inventory.v1."
 "#,
@@ -129,6 +129,11 @@ http://:{backend} {{
         header Upstream-Protocol {{http.request.proto}}
         reverse_proxy 127.0.0.1:{grpc_port}
     }}
+    handle {{
+        respond "{{http.request.proto}}|{{http.request.uri}}|{{http.request.header.X-Authentik-Username}}|{{http.request.header.X-Forwarded-Proto}}|{{http.request.method}}|{{http.request.body}}|{{http.request.header.X-Authentik-Groups}}"
+    }}
+}}
+http://:{outpost} {{
     @allow {{
         path /outpost.goauthentik.io/auth/caddy
         method GET
@@ -149,9 +154,7 @@ http://:{backend} {{
     handle /outpost.goauthentik.io/start {{
         respond "outpost-login"
     }}
-    handle {{
-        respond "{{http.request.proto}}|{{http.request.uri}}|{{http.request.header.X-Authentik-Username}}|{{http.request.header.X-Forwarded-Proto}}|{{http.request.method}}|{{http.request.body}}|{{http.request.header.X-Authentik-Groups}}"
-    }}
+    respond 404
 }}
 "#)).unwrap();
     let logs = tmp.0.join("caddy.log");
