@@ -153,29 +153,32 @@ job. Keep the existing timer schedule and Postfix target paths.
 
 Install `web-distributor-migrate` on the Incus host used by the sync
 job. It needs `incus`, `openssl`, and the same permission to read files
-from the web-distributor instance as the old sync. In the current
-`cmd_sync_smtp_cert` consumer, replace both legacy `incus file pull`
-commands with this call, keeping the existing temp directory and cleanup
-trap. Use the deployed mail hostname and storage root.
+from the web-distributor instance and write files in the Postfix
+instance as the old sync. The Postfix instance needs a filesystem and
+`mv --exchange --no-copy` that support atomic directory exchange.
+Replace the body of `cmd_sync_smtp_cert` with
+this invocation. Use the deployed mail hostname, storage root, and
+Postfix project. The lock file is an existing host file shared by
+scheduled and on-demand invocations of the consumer.
 
 ```sh
-/usr/local/bin/web-distributor-migrate pull-smtp-tls \
+/usr/local/bin/web-distributor-migrate sync-smtp-tls \
     --instance web-distributor --hostname mail.example.com \
-    --storage /var/lib/caddy/storage --output "${tmp}" \
-    || die "could not pull and verify the Caddy-managed SMTP certificate"
+    --storage /var/lib/caddy/storage --destination smtp \
+    --destination-project "$TENANT_PROJECT" \
+    --lock-file "${SCRIPT_DIR}/binfra-central"
 ```
 
 The helper uses Caddy's
 `certificates/acme-v02.api.letsencrypt.org-directory/<hostname>/<hostname>.{crt,key}`
-paths inside the selected storage root. It retries transient network or
-renewal races, verifies that the cert and key match, and checks the
-certificate chain, hostname and dates with the host's OpenSSL trust
-store. On success it provides private `fullchain.pem` and `privkey.pem`
-files for the existing consumer. Keep the output directory private.
-Update the consumer's change check to compare both files with their
-destination counterparts. A previous failed key push can leave the
-certificate fingerprint unchanged. Reload a running Postfix after
-both files are current, including on retry after a failed reload.
+paths inside the selected storage root in the default Incus project.
+It retries transient network or renewal races, verifies the certificate
+and key match, and checks the certificate chain, hostname and dates with
+the host's OpenSSL trust store. It compares both files with their
+destination counterparts, stages any changes privately, and exchanges the
+directory atomically to install them under `/etc/postfix/tls` as root.
+It reloads a running Postfix after
+both files are current and retries a pending reload on the next run.
 Run the sync service once after switching the reads. Verify the remote
 files form a pair and that Postfix serves the expected cert over
 STARTTLS. Check the next timer run and the first Caddy renewal.
