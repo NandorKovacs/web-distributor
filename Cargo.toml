@@ -15,3 +15,7 @@ rpassword = "7.3.1"
 serde = { version = "1.0.197", features = ["derive"] }
 tempfile = "3.10"
 toml = "0.8.12"
+
+[[bin]]
+name = "web-distributor-release"
+path = "ops/release/main.rs"
