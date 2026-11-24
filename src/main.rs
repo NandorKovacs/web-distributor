@@ -23,7 +23,7 @@ struct Cli {
         short,
         long,
         global = true,
-        default_value = "/etc/web-distributor.toml"
+        default_value = "/etc/web-distributor/v2/config.toml"
     )]
     config: PathBuf,
 

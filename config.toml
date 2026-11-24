@@ -1,4 +1,4 @@
-home = "/etc/web-distributor"
+home = "/etc/web-distributor/v2"
 certificate_only = ["mail.example.com"]
 
 [routes]

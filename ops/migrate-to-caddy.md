@@ -29,9 +29,11 @@ and adds matching standalone single-name ACME certificates to
 `certificate_only`. Review custom ACME hooks, multi-name certificates and
 custom Nginx directives individually, including any use of the old
 certificate files by other services. The candidate file is created with
-mode 0600. Use the snapshot's login-group files unchanged in the candidate
+mode 0600. Install the candidate as `/etc/web-distributor/v2/config.toml`. The helper
+omits the legacy `home` setting so v2 uses `/etc/web-distributor/v2`.
+Copy the snapshot's login-group files into the candidate
 `home/login_groups`, preserving ownership and access restrictions as
-appropriate. When staging off host, change `home` in a private copy to the
+appropriate. When staging off host, set `home` in a private copy to the
 staged directory with the copied group files.
 
 The inspected deployment had 43 web vhosts matching the templates, a
@@ -40,6 +42,11 @@ certificate, and a separate TCP webhook forwarding unit. The webhook
 listener or other independent service keeps its port and unit.
 
 ## Stage the master Caddyfile
+
+Install the v2 generator binary at `/opt/web-distributor/2.0.0/bin/web-distributor`
+in the guest. Use that full path during the migration so both versions can be
+operated independently. Its default generated fragment is
+`/etc/web-distributor/v2/Caddyfile`.
 
 Use the example master Caddyfile in staging.
 Set `default_sni` and `fallback_sni` to the existing fallback
@@ -70,7 +77,7 @@ the certificates in Caddy's shared cache for the initial switch and
 preserves the fallback certificate selection by SNI.
 
 Generate the candidate fragment with
-`web-distributor -c /path/to/private/caddy-candidate.toml --output /path/to/stage/Caddyfile generate`.
+`/opt/web-distributor/2.0.0/bin/web-distributor -c /path/to/private/caddy-candidate.toml --output /path/to/stage/Caddyfile generate`.
 Adjust the master import for the candidate fragment during validation,
 then restore the permanent import path on install. Run `caddy validate
 --config PATH --adapter caddyfile` on the combined config in the same

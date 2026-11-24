@@ -12,17 +12,17 @@ service to load a master Caddyfile. For a default installation the master is
 `/etc/caddy/Caddyfile`.
 
 ```caddyfile
-import /etc/web-distributor/Caddyfile
+import /etc/web-distributor/v2/Caddyfile
 ```
 
-The generator reads `/etc/web-distributor.toml` by default and writes
-`Caddyfile` under the configured `home` (default `/etc/web-distributor`). Set
+The generator reads `/etc/web-distributor/v2/config.toml` by default and writes
+`Caddyfile` under the configured `home` (default `/etc/web-distributor/v2`). Set
 up the output directory so the operator can write it and the Caddy service
 account can traverse the directory and read generated files. For a service
 running as the `caddy` group and generation as root, this is one setup.
 
 ```sh
-install -d -o root -g caddy -m 2750 /etc/web-distributor
+install -d -o root -g caddy -m 2750 /etc/web-distributor/v2
 web-distributor generate
 sudo -u caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 systemctl reload caddy

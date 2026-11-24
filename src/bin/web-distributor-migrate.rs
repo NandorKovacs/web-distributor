@@ -278,6 +278,8 @@ fn prepare(snapshot: &Path, output: &Path) -> Result<()> {
     println!("Reviewed {} configured web routes", routes.len());
 
     config.remove("acme_redirect_configs");
+    // Let v2 use its own home after the legacy inventory has been inspected.
+    config.remove("home");
     let existing = config
         .entry("certificate_only")
         .or_insert_with(|| Value::Array(Vec::new()))
