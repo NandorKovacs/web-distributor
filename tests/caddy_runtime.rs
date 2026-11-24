@@ -106,6 +106,7 @@ certificate_only = ["cert.example.test"]
 "sso.example.test" = "127.0.0.1:{outpost}"
 [grpc_prefix]
 "app.example.test" = "/inventory.v1."
+"sso.example.test" = "/inventory.v1."
 "#,
             home = tmp.0
         ),
@@ -213,6 +214,14 @@ http://:{outpost} {{
             if header == "\r\n" {
                 break;
             }
+            let name = header.split_once(':').unwrap().0;
+            assert!(
+                !name
+                    .to_ascii_lowercase()
+                    .replace('_', "-")
+                    .starts_with("x-authentik-"),
+                "gRPC backend received reserved header {name}"
+            );
         }
         let mut frame = [0u8; 5];
         reader.read_exact(&mut frame).unwrap();
@@ -221,8 +230,9 @@ http://:{outpost} {{
     });
     let frame = tmp.0.join("message.bin");
     fs::write(&frame, [0; 5]).unwrap();
+    let sso = "sso.example.test";
     let grpc = get(
-        host,
+        sso,
         "/inventory.v1.Stock/List",
         &[
             "--http2",
@@ -232,6 +242,14 @@ http://:{outpost} {{
             "TE: trailers",
             "-H",
             "Content-Type: application/grpc",
+            "-H",
+            "X-Authentik-Test: fixture",
+            "-H",
+            "X-Authentik_Test: fixture",
+            "-H",
+            "X_Authentik-Test: fixture",
+            "-H",
+            "X_Authentik_Test: fixture",
         ],
     );
     assert!(
@@ -246,7 +264,6 @@ http://:{outpost} {{
     assert!(basic.contains(" 401"), "{basic}");
     let authed = get("staff.example.test", "/", &["-u", "tester:test-password"]);
     assert!(authed.contains(" 200"), "{authed}");
-    let sso = "sso.example.test";
     let signin = get(sso, "/private?q=1", &[]);
     assert!(
         signin.contains(" 302")

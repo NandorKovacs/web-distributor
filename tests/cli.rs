@@ -151,6 +151,47 @@ fn invalid_edits_leave_existing_source_and_output_readable() {
 }
 
 #[test]
+fn root_grpc_prefix_is_valid_only_without_forward_auth() {
+    let install = Installation::new("[routes]\n");
+    let domain = "example.test";
+    let root_prefix = ["add", "--force", "--grpc-prefix", "/", domain, "backend"];
+    let apply_auth = ["forward-auth", "apply", domain, "outpost:9000"];
+
+    let rejects = |args: &[&str]| {
+        let config = fs::read(&install.config).unwrap();
+        let fragment = install.fragment();
+        let output = install.run(args);
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        assert!(error.contains("gRPC prefix '/' on example.test"), "{error}");
+        assert_eq!(fs::read(&install.config).unwrap(), config);
+        assert_eq!(install.fragment(), fragment);
+    };
+
+    install.succeeds(&root_prefix);
+    assert!(install.fragment().contains("@grpc path_regexp ^/\n"));
+    rejects(&apply_auth);
+
+    install.succeeds(&[
+        "add",
+        "--force",
+        "--grpc-prefix",
+        "/service.",
+        domain,
+        "backend",
+    ]);
+    install.succeeds(&apply_auth);
+    rejects(&root_prefix);
+
+    // A hand-edited inventory must get the same diagnostic on regeneration.
+    let config = fs::read_to_string(&install.config)
+        .unwrap()
+        .replace("/service.", "/");
+    fs::write(&install.config, config).unwrap();
+    rejects(&["generate"]);
+}
+
+#[test]
 fn credential_edits_use_exact_usernames_and_protection_survives_route_removal() {
     let install = Installation::new("[routes]\n\"example.test\" = \"backend\"\n");
     install.succeeds(&["login-group", "create", "writers"]);

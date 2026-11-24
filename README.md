@@ -34,7 +34,9 @@ If you edit the TOML directly, run `web-distributor generate` before validation.
 | `/etc/web-distributor/v2/Caddyfile` | Generated site blocks. This file includes password hashes and must be readable by the Caddy service. |
 | `/etc/caddy/Caddyfile` | Operator-maintained master that imports the generated fragment and sets server-wide TLS and redirect behavior. |
 
-`[routes]` maps hostnames to HTTP upstreams. `[login_groups]` assigns site-wide Basic auth. `[forward_auth]` assigns an Authentik outpost. `[grpc_prefix]` sends a literal path prefix to the same backend over cleartext HTTP/2; this branch runs after Basic auth and before Authentik. Top-level `certificate_only` lists names such as a mail host that require a certificate and return an HTTPS 404. `home` changes the directory used for login groups and the default fragment.
+`[routes]` maps hostnames to HTTP upstreams. `[login_groups]` assigns site-wide Basic auth. `[forward_auth]` assigns an Authentik outpost. `[grpc_prefix]` sends matching paths to the same backend over cleartext HTTP/2 after Basic auth and before the Authentik check. On Authentik sites, choose a prefix narrower than `/`. The backend must authenticate requests on that prefix itself. Caddy strips client-supplied Authentik identity headers before forwarding them.
+
+Top-level `certificate_only` lists names such as a mail host that require a certificate and return an HTTPS 404. `home` changes the directory used for login groups and the default fragment.
 
 For a fresh installation, install Caddy 2.10 or later and the generator. On Arch Linux, Caddy is the `caddy` pacman package. Create the inventory directory with `install -d -o root -g caddy -m 2750 /etc/web-distributor/v2`, install your inventory with mode `0600`, and run `web-distributor generate`. Adapt the [example master Caddyfile](ops/Caddyfile.example) with your ACME email, fallback hostname and storage path. The fallback name must be one of your managed sites. Validate the master before enabling and starting `caddy.service`. Public DNS and inbound TCP 80/443 must reach the server for this setup.
 

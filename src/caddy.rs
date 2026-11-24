@@ -25,10 +25,6 @@ fn render_forward_auth(output: &mut String, outpost: &str) {
     write!(
         output,
         "\t\t@outpost path {OUTPOST_PATH} {OUTPOST_PATH}/*\n\
-         \t\trequest_header -X-Authentik-*\n\
-         \t\trequest_header -X-Authentik_*\n\
-         \t\trequest_header -X_Authentik-*\n\
-         \t\trequest_header -X_Authentik_*\n\
          \t\treverse_proxy @outpost {outpost} {{\n\
          \t\t\theader_up Host {{http.request.host}}\n\
          \t\t\theader_up X-Original-URL {{scheme}}://{{http.request.hostport}}{{uri}}\n\
@@ -97,7 +93,21 @@ pub fn render(
             output.push_str("\t\t}\n");
         }
 
+        let outpost = config.forward_auth.get(domain);
+        if outpost.is_some() {
+            output.push_str(
+                "\t\trequest_header -X-Authentik-*\n\
+                 \t\trequest_header -X-Authentik_*\n\
+                 \t\trequest_header -X_Authentik-*\n\
+                 \t\trequest_header -X_Authentik_*\n",
+            );
+        }
+
         if let Some(prefix) = config.grpc_prefix.get(domain) {
+            ensure!(
+                prefix != "/" || outpost.is_none(),
+                "gRPC prefix '/' on {domain} would skip Authentik for every path; choose a narrower prefix"
+            );
             let pattern =
                 grpc_path_pattern(prefix).with_context(|| format!("gRPC route for {domain}"))?;
             write!(
@@ -110,7 +120,7 @@ pub fn render(
             .unwrap();
         }
 
-        if let Some(outpost) = config.forward_auth.get(domain) {
+        if let Some(outpost) = outpost {
             validate_target(outpost).with_context(|| format!("forward auth for {domain}"))?;
             render_forward_auth(&mut output, outpost);
         }
