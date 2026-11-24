@@ -1,7 +1,7 @@
 //! Run with CADDY=/path/to/caddy cargo test --test caddy_runtime -- --ignored
 //! Requires curl with HTTP/2 support. All listeners and PKI are local to the test.
 use std::fs;
-use std::io::{self, BufRead, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -84,6 +84,8 @@ fn generated_routes_serve_real_requests() {
     .unwrap();
     let ws_listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let ws_port = ws_listener.local_addr().unwrap().port();
+    let grpc_listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    let grpc_port = grpc_listener.local_addr().unwrap().port();
     let [http, https, backend] = ports();
     let config = tmp.0.join("config.toml");
     fs::write(
@@ -123,10 +125,16 @@ certificate_only = ["cert.example.test"]
 }}
 import routes.caddy
 http://:{backend} {{
+    handle /inventory.v1.Stock/List {{
+        header Upstream-Protocol {{http.request.proto}}
+        reverse_proxy 127.0.0.1:{grpc_port}
+    }}
     @allow {{
         path /outpost.goauthentik.io/auth/caddy
         method GET
         header Cookie session=ok
+        header X-Forwarded-Method POST
+        header X-Forwarded-Uri /private?q=1
     }}
     handle @allow {{
         header X-Authentik-Username verified
@@ -142,7 +150,7 @@ http://:{backend} {{
         respond "outpost-login"
     }}
     handle {{
-        respond "{{http.request.proto}}|{{http.request.uri}}|{{http.request.header.X-Authentik-Username}}|{{http.request.header.X-Forwarded-Proto}}|{{http.request.method}}"
+        respond "{{http.request.proto}}|{{http.request.uri}}|{{http.request.header.X-Authentik-Username}}|{{http.request.header.X-Forwarded-Proto}}|{{http.request.method}}|{{http.request.body}}|{{http.request.header.X-Authentik-Groups}}"
     }}
 }}
 "#)).unwrap();
@@ -187,12 +195,50 @@ http://:{backend} {{
             .contains("strict-transport-security: max-age=63072000"),
         "{plain}"
     );
+    // Caddy's h2c test backend translates this chunked response into HTTP/2
+    // DATA and trailing HEADERS. Five zero bytes encode an empty gRPC message.
+    let grpc_server = thread::spawn(move || {
+        let (mut stream, _) = grpc_listener.accept().unwrap();
+        let mut reader = BufReader::new(&stream);
+        let mut first_line = String::new();
+        reader.read_line(&mut first_line).unwrap();
+        assert_eq!(first_line, "POST /inventory.v1.Stock/List HTTP/1.1\r\n");
+        let mut header = String::new();
+        loop {
+            header.clear();
+            assert!(reader.read_line(&mut header).unwrap() > 0);
+            if header == "\r\n" {
+                break;
+            }
+        }
+        let mut frame = [0u8; 5];
+        reader.read_exact(&mut frame).unwrap();
+        assert_eq!(frame, [0; 5]);
+        stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/grpc\r\nTransfer-Encoding: chunked\r\nTrailer: Grpc-Status\r\n\r\n5\r\n\0\0\0\0\0\r\n0\r\nGrpc-Status: 0\r\n\r\n").unwrap();
+    });
+    let frame = tmp.0.join("message.bin");
+    fs::write(&frame, [0; 5]).unwrap();
     let grpc = get(
         host,
         "/inventory.v1.Stock/List",
-        &["-X", "POST", "-H", "Content-Type: application/grpc"],
+        &[
+            "--http2",
+            "--data-binary",
+            &format!("@{}", frame.display()),
+            "-H",
+            "TE: trailers",
+            "-H",
+            "Content-Type: application/grpc",
+        ],
     );
-    assert!(grpc.contains("HTTP/2.0|/inventory.v1.Stock/List"), "{grpc}");
+    assert!(
+        grpc.starts_with("HTTP/2 200")
+            && grpc.to_lowercase().contains("upstream-protocol: http/2.0")
+            && grpc.contains("\0\0\0\0\0")
+            && grpc.to_lowercase().contains("grpc-status: 0"),
+        "{grpc:?}"
+    );
+    grpc_server.join().unwrap();
     let basic = get("staff.example.test", "/", &[]);
     assert!(basic.contains(" 401"), "{basic}");
     let authed = get("staff.example.test", "/", &["-u", "tester:test-password"]);
@@ -207,18 +253,20 @@ http://:{backend} {{
     );
     let ok = get(
         sso,
-        "/private",
+        "/private?q=1",
         &[
             "-H",
             "Cookie: session=ok",
             "-H",
             "X-Authentik-Username: forged",
+            "-H",
+            "X-Authentik-Groups: forged",
             "--data",
             "payload",
         ],
     );
     assert!(
-        ok.contains("/private|verified|https|POST") && ok.contains("refresh=yes"),
+        ok.ends_with("/private?q=1|verified|https|POST|payload|") && ok.contains("refresh=yes"),
         "{ok}"
     );
     assert!(get(sso, "/outpost.goauthentik.io/start", &[]).contains("outpost-login"));
