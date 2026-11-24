@@ -1,13 +1,9 @@
-# use this for testing to not clutter /etc
-
-home = "home"
-acme_redirect_configs = "acme"
+home = "./scratch/test-web-distributor"
+certificate_only = ["mail.example.test"]
 
 [routes]
-"example.com" = "127.0.0.1"
-"example.org" = "127.0.0.2"
+"app.example.test" = "127.0.0.1:8000"
+"inventory.example.test" = "127.0.0.1:8001"
 
-
-
-[login_groups]
-"example.com" = "my_login_group"
+[grpc_prefix]
+"inventory.example.test" = "/inventory.v1."
