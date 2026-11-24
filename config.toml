@@ -1,11 +1,9 @@
-home = "/etc/web-distributor"
-acme_redirect_configs = "/etc/acme-redirect.d"
+home = "/etc/web-distributor/v2"
+certificate_only = ["mail.example.com"]
 
 [routes]
-"example.com" = "127.0.0.1"
-"example.org" = "127.0.0.2"
+"app.example.com" = "192.0.2.10:8080"
+"inventory.example.com" = "192.0.2.11:8080"
 
-
-
-[login_groups]
-"example.com" = "my_login_group"
+[grpc_prefix]
+"inventory.example.com" = "/inventory.v1."

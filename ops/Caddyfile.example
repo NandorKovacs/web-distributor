@@ -1,0 +1,26 @@
+{
+	admin unix//run/caddy/admin.socket
+	persist_config off
+	email operator@example.com
+	storage file_system /var/lib/caddy/storage
+	cert_issuer acme https://acme-v02.api.letsencrypt.org/directory
+	default_sni app.example.com
+	fallback_sni app.example.com
+	auto_https disable_redirects
+}
+
+import /etc/web-distributor/v2/Caddyfile
+
+http:// {
+	@challenge path /.well-known/acme-challenge/*
+	handle @challenge {
+		respond 404
+	}
+	handle {
+		redir https://{host}{uri} 301
+	}
+}
+
+https://:443 {
+	respond 404
+}
